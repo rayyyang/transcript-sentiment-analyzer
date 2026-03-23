@@ -1,47 +1,34 @@
-// TypeScript types for the Sentiment Analyzer data
+// TypeScript types for the Tech-Focused Sentiment Analyzer
 
-export interface Dimension {
-  key: string;
-  label: string;
-  description: string;
-}
+export const SCORE_DIMENSIONS = [
+  'overall_sentiment', 'guidance_confidence', 'ai_exposure', 'cloud_momentum',
+  'competitive_moat', 'capex_confidence', 'margin_trajectory', 'innovation_pipeline',
+  'customer_momentum', 'macro_sensitivity'
+] as const;
 
-export interface CompositeWeights {
-  overall_sentiment: number;
-  guidance_confidence: number;
-  hedging_intensity_inverse: number;
-  growth_language: number;
-  margin_confidence: number;
-}
+export type ScoreDimension = typeof SCORE_DIMENSIONS[number];
 
-export interface Methodology {
-  model: string;
-  dimensions: Dimension[];
-  composite_weights: CompositeWeights;
-  source: string;
-  scoring: string;
-}
+export const DIMENSION_LABELS: Record<ScoreDimension, string> = {
+  overall_sentiment: 'Overall Sentiment',
+  guidance_confidence: 'Guidance Confidence',
+  ai_exposure: 'AI Exposure',
+  cloud_momentum: 'Cloud Momentum',
+  competitive_moat: 'Competitive Moat',
+  capex_confidence: 'CapEx Confidence',
+  margin_trajectory: 'Margin Trajectory',
+  innovation_pipeline: 'Innovation Pipeline',
+  customer_momentum: 'Customer Momentum',
+  macro_sensitivity: 'Macro Sensitivity',
+};
 
 export interface TranscriptEntry {
   date: string;
-  fiscal_year: number;
-  fiscal_period: string;
-  title: string;
-  overall_sentiment: number;
-  guidance_confidence: number;
-  hedging_intensity: number;
-  growth_language: number;
-  margin_confidence: number;
-  qa_defensiveness: number;
-  composite_score: number;
-  summary: string;
-  word_count: number;
-  next_q_return?: number;
-}
-
-export interface PricePoint {
-  date: string;
-  close: number;
+  scores: Record<ScoreDimension, number>;
+  composite: number;
+  key_themes: string[];
+  notable_quotes: string[];
+  risk_flags: string[];
+  next_quarter_return: number | null;
 }
 
 export interface DateRange {
@@ -49,48 +36,47 @@ export interface DateRange {
   latest: string;
 }
 
-export interface CompanyAverages {
-  overall_sentiment: number;
-  guidance_confidence: number;
-  hedging_intensity: number;
-  growth_language: number;
-  margin_confidence: number;
-  qa_defensiveness: number;
-  composite_score: number;
-}
-
 export interface Company {
   ticker: string;
   name: string;
-  sector: string;
+  subsector: string;
   n_transcripts: number;
+  n_with_returns: number;
   date_range: DateRange;
-  averages: CompanyAverages;
+  averages: Record<ScoreDimension, number>;
+  avg_composite: number;
   trend: number;
-  volatility: number;
   history: TranscriptEntry[];
-  price_history: PricePoint[];
 }
 
-export interface SectorData {
+export interface SubsectorData {
   count: number;
-  avg_composite: number;
-  avg_sentiment: number;
   tickers: string[];
+  avg_composite: number;
 }
 
 export interface CorrelationResult {
   r: number;
-  t: number | null;
+  t: number;
   n: number;
-  sig: boolean;
-  significant?: boolean;
+  sig?: boolean;
 }
 
 export interface QuintileData {
   quintile: string;
   label: string;
-  avg_score: number;
+  avg_composite: number;
+  avg_return: number;
+  median_return: number;
+  count: number;
+  min_composite: number;
+  max_composite: number;
+}
+
+export interface DeltaQuintile {
+  quintile: string;
+  label: string;
+  avg_delta: number;
   avg_return: number;
   count: number;
 }
@@ -99,58 +85,31 @@ export interface CorrelationAnalysis {
   overall: CorrelationResult;
   by_dimension: Record<string, CorrelationResult>;
   by_company: Record<string, CorrelationResult>;
+  by_subsector: Record<string, CorrelationResult>;
   quintiles: QuintileData[];
+  delta_analysis: {
+    overall: CorrelationResult;
+    quintiles: DeltaQuintile[];
+  };
   total_pairs: number;
-  note: string;
+}
+
+export interface Methodology {
+  model: string;
+  dimensions: string[];
+  return_window: string;
+  transcript_source: string;
+  price_source: string;
 }
 
 export interface WebappData {
   generated_at: string;
   total_companies: number;
   total_transcripts: number;
+  total_with_returns: number;
+  focus: string;
   methodology: Methodology;
   companies: Record<string, Company>;
-  sectors: Record<string, SectorData>;
-  dimension_correlations: Record<string, Record<string, CorrelationResult>>;
+  subsectors: Record<string, SubsectorData>;
   correlation_analysis: CorrelationAnalysis;
-}
-
-// API response types
-export interface OverviewResponse {
-  total_companies: number;
-  total_transcripts: number;
-  date_range: { earliest: string; latest: string };
-  overall_correlation: CorrelationResult;
-  sectors: Record<string, SectorData>;
-  quintiles: QuintileData[];
-}
-
-export interface CompanyListItem {
-  ticker: string;
-  name: string;
-  sector: string;
-  composite_score: number;
-  trend: number;
-  n_transcripts: number;
-}
-
-export interface CompanyDetail {
-  ticker: string;
-  name: string;
-  sector: string;
-  date_range: DateRange;
-  averages: CompanyAverages;
-  trend: number;
-  volatility: number;
-  history: TranscriptEntry[];
-  price_history: PricePoint[];
-}
-
-export interface CorrelationsResponse {
-  overall: CorrelationResult;
-  by_dimension: Record<string, CorrelationResult>;
-  by_company: Record<string, CorrelationResult>;
-  quintiles: QuintileData[];
-  total_pairs: number;
-  note: string;
 }

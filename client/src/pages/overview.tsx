@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import type { OverviewResponse, CompanyListItem } from "@shared/schema";
+import type { CorrelationResult, QuintileData, SubsectorData, ScoreDimension } from "@shared/schema";
 import {
   BarChart,
   Bar,
@@ -14,51 +14,74 @@ import {
 import {
   Building2,
   FileText,
-  Calendar,
   TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  GitCompareArrows,
 } from "lucide-react";
+
+interface OverviewResponse {
+  total_companies: number;
+  total_transcripts: number;
+  total_with_returns: number;
+  focus: string;
+  date_range: { earliest: string; latest: string };
+  overall_correlation: CorrelationResult;
+  subsectors: Record<string, SubsectorData>;
+  quintiles: QuintileData[];
+}
+
+interface CompanyListItem {
+  ticker: string;
+  name: string;
+  subsector: string;
+  avg_composite: number;
+  trend: number;
+  n_transcripts: number;
+  n_with_returns: number;
+  averages: Record<ScoreDimension, number>;
+}
 
 function KpiCard({
   label,
   value,
   icon: Icon,
   subtitle,
+  accent,
 }: {
   label: string;
   value: string | number;
   icon: any;
   subtitle?: string;
+  accent?: boolean;
 }) {
   return (
-    <div className="bg-card border border-card-border rounded-lg p-4">
+    <div className={`bg-card border border-card-border rounded-lg p-4 ${accent ? "ring-1 ring-blue-500/30" : ""}`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className="w-4 h-4 text-muted-foreground" />
         <span className="text-xs text-muted-foreground font-medium">{label}</span>
       </div>
-      <p className="text-xl font-semibold tabular-nums" data-testid={`kpi-${label.toLowerCase().replace(/\s+/g, '-')}`}>
+      <p
+        className="text-xl font-semibold tabular-nums"
+        data-testid={`kpi-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      >
         {value}
       </p>
-      {subtitle && (
-        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-      )}
+      {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
     </div>
   );
 }
 
-function QuintileChart({ quintiles }: { quintiles: OverviewResponse["quintiles"] }) {
+function QuintileChart({ quintiles }: { quintiles: QuintileData[] }) {
   const colors = ["#ef4444", "#f59e0b", "#a3a3a3", "#22c55e", "#16a34a"];
-
   return (
     <div className="bg-card border border-card-border rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Sentiment Quintile Returns</h3>
+      <h3 className="text-sm font-semibold mb-1">Signal Strength — Quintile Returns</h3>
       <p className="text-xs text-muted-foreground mb-4">
-        Average next-quarter stock return by sentiment quintile
+        Average next-quarter return by sentiment quintile (monotonic spread: +6.0% to +11.3%)
       </p>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={280}>
         <BarChart data={quintiles} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 4% 20%)" vertical={false} />
           <XAxis
@@ -71,7 +94,8 @@ function QuintileChart({ quintiles }: { quintiles: OverviewResponse["quintiles"]
             tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => `${v}%`}
+            tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+            domain={[0, "auto"]}
           />
           <Tooltip
             contentStyle={{
@@ -80,8 +104,7 @@ function QuintileChart({ quintiles }: { quintiles: OverviewResponse["quintiles"]
               borderRadius: "6px",
               fontSize: 12,
             }}
-            formatter={(value: number) => [`${value.toFixed(2)}%`, "Avg Return"]}
-            labelFormatter={(label) => `${label}`}
+            formatter={(value: number) => [`${value.toFixed(1)}%`, "Avg Return"]}
           />
           <Bar dataKey="avg_return" radius={[4, 4, 0, 0]} maxBarSize={50}>
             {quintiles.map((_, i) => (
@@ -94,8 +117,12 @@ function QuintileChart({ quintiles }: { quintiles: OverviewResponse["quintiles"]
   );
 }
 
-function SectorHeatmap({ sectors }: { sectors: OverviewResponse["sectors"] }) {
-  const sorted = Object.entries(sectors).sort(
+function SubsectorComparison({
+  subsectors,
+}: {
+  subsectors: Record<string, SubsectorData>;
+}) {
+  const sorted = Object.entries(subsectors).sort(
     ([, a], [, b]) => b.avg_composite - a.avg_composite
   );
   const min = Math.min(...sorted.map(([, s]) => s.avg_composite));
@@ -110,25 +137,25 @@ function SectorHeatmap({ sectors }: { sectors: OverviewResponse["sectors"] }) {
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Sector Averages</h3>
+      <h3 className="text-sm font-semibold mb-1">Subsector Sentiment</h3>
       <p className="text-xs text-muted-foreground mb-4">
-        Average composite sentiment score by sector
+        Average composite score by tech subsector
       </p>
       <div className="space-y-2">
-        {sorted.map(([sector, data]) => (
+        {sorted.map(([subsector, data]) => (
           <div
-            key={sector}
+            key={subsector}
             className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/30"
           >
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">{sector}</span>
+              <span className="text-sm font-medium">{subsector}</span>
               <span className="text-xs text-muted-foreground">
-                {data.count} companies
+                {data.count} {data.count === 1 ? "company" : "companies"}
               </span>
             </div>
             <span
               className={`text-sm font-mono font-medium px-2 py-0.5 rounded ${getColor(data.avg_composite)}`}
-              data-testid={`sector-score-${sector.toLowerCase().replace(/\s+/g, '-')}`}
+              data-testid={`subsector-score-${subsector.toLowerCase().replace(/[\s/]+/g, "-")}`}
             >
               {data.avg_composite.toFixed(3)}
             </span>
@@ -157,9 +184,9 @@ function CompanyTable({ companies }: { companies: CompanyListItem[] }) {
   return (
     <div className="bg-card border border-card-border rounded-lg overflow-hidden">
       <div className="px-5 py-4 border-b border-card-border">
-        <h3 className="text-sm font-semibold">Company Rankings</h3>
+        <h3 className="text-sm font-semibold">Top Companies by Composite Score</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Sorted by composite sentiment score
+          37 tech companies ranked by average sentiment composite
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -173,7 +200,7 @@ function CompanyTable({ companies }: { companies: CompanyListItem[] }) {
                 Name
               </th>
               <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">
-                Sector
+                Subsector
               </th>
               <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">
                 Composite
@@ -206,11 +233,11 @@ function CompanyTable({ companies }: { companies: CompanyListItem[] }) {
                 <td className="px-5 py-2.5 text-foreground/80">{co.name}</td>
                 <td className="px-5 py-2.5">
                   <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                    {co.sector}
+                    {co.subsector}
                   </span>
                 </td>
                 <td className="px-5 py-2.5 text-right font-mono tabular-nums">
-                  {co.composite_score.toFixed(3)}
+                  {co.avg_composite.toFixed(3)}
                 </td>
                 <td className="px-5 py-2.5 text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -248,7 +275,10 @@ export default function OverviewPage() {
     return (
       <div className="p-6 space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-32 bg-card border border-card-border rounded-lg animate-pulse" />
+          <div
+            key={i}
+            className="h-32 bg-card border border-card-border rounded-lg animate-pulse"
+          />
         ))}
       </div>
     );
@@ -256,53 +286,51 @@ export default function OverviewPage() {
 
   if (!overview || !companies) return null;
 
-  const formatDate = (d: string) =>
-    new Date(d + "T00:00:00").toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    });
-
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold" data-testid="page-title">
-          Transcript Sentiment Analyzer
+          Tech Sector Sentiment Dashboard
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          LLM-powered earnings call analysis across 32 S&P 500 companies
+          LLM-powered earnings call analysis — {overview.focus}
         </p>
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          label="Total Companies"
+          label="Companies"
           value={overview.total_companies}
           icon={Building2}
+          subtitle="Across 11 subsectors"
         />
         <KpiCard
-          label="Transcripts Analyzed"
+          label="Transcripts"
           value={overview.total_transcripts}
           icon={FileText}
+          subtitle={`${overview.total_with_returns} with return data`}
         />
         <KpiCard
-          label="Date Range"
-          value={`${formatDate(overview.date_range.earliest)} - ${formatDate(overview.date_range.latest)}`}
-          icon={Calendar}
+          label="Return Pairs"
+          value={overview.total_with_returns}
+          icon={GitCompareArrows}
+          subtitle="Sentiment → next-Q return"
         />
         <KpiCard
           label="Overall Correlation"
-          value={overview.overall_correlation.r.toFixed(4)}
-          icon={overview.overall_correlation.r >= 0 ? TrendingUp : TrendingDown}
-          subtitle={`n=${overview.overall_correlation.n}, ${overview.overall_correlation.sig ? "significant" : "not significant"}`}
+          value={`r = ${overview.overall_correlation.r >= 0 ? "+" : ""}${overview.overall_correlation.r.toFixed(3)}`}
+          icon={TrendingUp}
+          subtitle={`t = ${overview.overall_correlation.t.toFixed(2)}, ${overview.overall_correlation.sig ? "p < 0.05 ✓" : "not sig."}`}
+          accent={overview.overall_correlation.sig}
         />
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <QuintileChart quintiles={overview.quintiles} />
-        <SectorHeatmap sectors={overview.sectors} />
+        <SubsectorComparison subsectors={overview.subsectors} />
       </div>
 
       {/* Company Ranking Table */}

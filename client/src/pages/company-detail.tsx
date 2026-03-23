@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { CompanyDetail, CompanyListItem } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
+import type { Company, TranscriptEntry, SCORE_DIMENSIONS } from "@shared/schema";
+import { DIMENSION_LABELS } from "@shared/schema";
 import {
   LineChart,
   Line,
@@ -14,139 +16,52 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
-  ScatterChart,
-  Scatter,
-  Cell,
+  Legend,
 } from "recharts";
-import { ArrowLeft, ChevronDown, ChevronUp, Calendar, TrendingUp, BarChart3 } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  TrendingUp,
+  AlertTriangle,
+  MessageSquareQuote,
+  Tag,
+} from "lucide-react";
 import { useState } from "react";
 
-function SentimentPriceChart({ company }: { company: CompanyDetail }) {
-  const chartData = company.history.map((h) => ({
-    date: h.date,
-    label: h.title,
-    composite: h.composite_score,
+const SHORT_LABELS: Record<string, string> = {
+  overall_sentiment: "Sentiment",
+  guidance_confidence: "Guidance",
+  ai_exposure: "AI Exposure",
+  cloud_momentum: "Cloud",
+  competitive_moat: "Moat",
+  capex_confidence: "CapEx",
+  margin_trajectory: "Margin",
+  innovation_pipeline: "Innovation",
+  customer_momentum: "Customers",
+  macro_sensitivity: "Macro Sens.",
+};
+
+function DimensionRadar({ company }: { company: Company }) {
+  const radarData = Object.entries(company.averages).map(([key, value]) => ({
+    dim: SHORT_LABELS[key] || key,
+    value: value,
+    fullMark: 1,
   }));
 
-  // Find closest price for each transcript date
-  const enriched = chartData.map((d) => {
-    const priceMatch = company.price_history.reduce((closest, p) => {
-      const diff = Math.abs(
-        new Date(p.date).getTime() - new Date(d.date).getTime()
-      );
-      const closestDiff = Math.abs(
-        new Date(closest.date).getTime() - new Date(d.date).getTime()
-      );
-      return diff < closestDiff ? p : closest;
-    }, company.price_history[0]);
-    return { ...d, price: priceMatch?.close };
-  });
-
   return (
     <div className="bg-card border border-card-border rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Sentiment & Price History</h3>
-      <p className="text-xs text-muted-foreground mb-4">
-        Composite score over time with stock price overlay
-      </p>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={enriched} margin={{ top: 5, right: 50, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 4% 20%)" />
-          <XAxis
-            dataKey="label"
-            tick={{ fill: "hsl(215 20% 55%)", fontSize: 10 }}
-            axisLine={{ stroke: "hsl(240 4% 20%)" }}
-            tickLine={false}
-          />
-          <YAxis
-            yAxisId="sentiment"
-            domain={[0.3, 1]}
-            tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            label={{ value: "Score", angle: -90, position: "insideLeft", fill: "hsl(215 20% 55%)", fontSize: 10 }}
-          />
-          <YAxis
-            yAxisId="price"
-            orientation="right"
-            tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v) => `$${v}`}
-            label={{ value: "Price", angle: 90, position: "insideRight", fill: "hsl(215 20% 55%)", fontSize: 10 }}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(240 6% 10%)",
-              border: "1px solid hsl(240 4% 20%)",
-              borderRadius: "6px",
-              fontSize: 12,
-            }}
-            formatter={(value: number, name: string) => [
-              name === "composite"
-                ? value.toFixed(3)
-                : `$${value.toFixed(2)}`,
-              name === "composite" ? "Sentiment" : "Price",
-            ]}
-          />
-          <Line
-            yAxisId="sentiment"
-            type="monotone"
-            dataKey="composite"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={{ fill: "#3b82f6", r: 4 }}
-            activeDot={{ r: 6 }}
-          />
-          <Line
-            yAxisId="price"
-            type="monotone"
-            dataKey="price"
-            stroke="#22c55e"
-            strokeWidth={1.5}
-            strokeDasharray="4 4"
-            dot={{ fill: "#22c55e", r: 3 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-      <div className="flex items-center gap-6 mt-3 text-xs text-muted-foreground justify-center">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-0.5 bg-blue-500 rounded" />
-          <span>Sentiment Score</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-0.5 bg-emerald-500 rounded border-dashed" style={{ borderTop: "1px dashed #22c55e" }} />
-          <span>Stock Price</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DimensionRadar({ company }: { company: CompanyDetail }) {
-  const latest = company.history[company.history.length - 1];
-  if (!latest) return null;
-
-  const radarData = [
-    { dim: "Sentiment", value: latest.overall_sentiment, fullMark: 1 },
-    { dim: "Guidance", value: latest.guidance_confidence, fullMark: 1 },
-    { dim: "Hedging", value: 1 - latest.hedging_intensity, fullMark: 1 },
-    { dim: "Growth", value: latest.growth_language, fullMark: 1 },
-    { dim: "Margin", value: latest.margin_confidence, fullMark: 1 },
-    { dim: "Q&A", value: 1 - latest.qa_defensiveness, fullMark: 1 },
-  ];
-
-  return (
-    <div className="bg-card border border-card-border rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Latest Dimension Profile</h3>
+      <h3 className="text-sm font-semibold mb-1">Average Dimension Profile</h3>
       <p className="text-xs text-muted-foreground mb-2">
-        {latest.title} — Higher is more positive (hedging & defensiveness inverted)
+        Mean scores across all {company.n_transcripts} transcripts
       </p>
-      <ResponsiveContainer width="100%" height={300}>
-        <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+      <ResponsiveContainer width="100%" height={320}>
+        <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
           <PolarGrid stroke="hsl(240 4% 20%)" />
           <PolarAngleAxis
             dataKey="dim"
-            tick={{ fill: "hsl(215 20% 65%)", fontSize: 11 }}
+            tick={{ fill: "hsl(215 20% 65%)", fontSize: 10 }}
           />
           <PolarRadiusAxis
             domain={[0, 1]}
@@ -166,41 +81,70 @@ function DimensionRadar({ company }: { company: CompanyDetail }) {
   );
 }
 
-function CompanyScatter({ company }: { company: CompanyDetail }) {
-  const data = company.history
-    .filter((h) => h.next_q_return !== undefined && h.next_q_return !== null)
-    .map((h) => ({
-      x: h.composite_score,
-      y: h.next_q_return!,
-      name: h.title,
-    }));
+function SentimentTimeline({ company }: { company: Company }) {
+  const chartData = company.history.map((h) => {
+    const dateObj = new Date(h.date + "T00:00:00");
+    const label = dateObj.toLocaleDateString("en-US", {
+      month: "short",
+      year: "2-digit",
+    });
+    return {
+      date: h.date,
+      label,
+      composite: h.composite,
+      return_pct:
+        h.next_quarter_return !== null && h.next_quarter_return !== undefined
+          ? h.next_quarter_return
+          : null,
+    };
+  });
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Sentiment vs. Return</h3>
+      <h3 className="text-sm font-semibold mb-1">Sentiment Timeline</h3>
       <p className="text-xs text-muted-foreground mb-4">
-        Composite score vs. next-quarter stock return
+        Composite score over time with next-quarter return overlay
       </p>
-      <ResponsiveContainer width="100%" height={260}>
-        <ScatterChart margin={{ top: 5, right: 20, bottom: 20, left: 0 }}>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 5, right: 50, bottom: 5, left: 0 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 4% 20%)" />
           <XAxis
-            dataKey="x"
-            name="Score"
-            type="number"
-            tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
+            dataKey="label"
+            tick={{ fill: "hsl(215 20% 55%)", fontSize: 10 }}
             axisLine={{ stroke: "hsl(240 4% 20%)" }}
             tickLine={false}
-            label={{ value: "Composite Score", position: "bottom", fill: "hsl(215 20% 55%)", fontSize: 10, offset: 5 }}
           />
           <YAxis
-            dataKey="y"
-            name="Return"
-            type="number"
+            yAxisId="sentiment"
+            domain={[0.3, 1]}
             tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => `${v}%`}
+            label={{
+              value: "Score",
+              angle: -90,
+              position: "insideLeft",
+              fill: "hsl(215 20% 55%)",
+              fontSize: 10,
+            }}
+          />
+          <YAxis
+            yAxisId="return"
+            orientation="right"
+            tick={{ fill: "hsl(215 20% 55%)", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+            label={{
+              value: "Return",
+              angle: 90,
+              position: "insideRight",
+              fill: "hsl(215 20% 55%)",
+              fontSize: 10,
+            }}
           />
           <Tooltip
             contentStyle={{
@@ -209,125 +153,159 @@ function CompanyScatter({ company }: { company: CompanyDetail }) {
               borderRadius: "6px",
               fontSize: 12,
             }}
-            formatter={(value: number, name: string) => [
-              name === "Score" ? value.toFixed(3) : `${value.toFixed(1)}%`,
-              name === "Score" ? "Score" : "Return",
-            ]}
-            labelFormatter={() => ""}
+            formatter={(value: number | null, name: string) => {
+              if (value === null) return ["—", name];
+              return name === "composite"
+                ? [value.toFixed(3), "Sentiment"]
+                : [`${value.toFixed(1)}%`, "Next-Q Return"];
+            }}
           />
-          <Scatter data={data} fill="#3b82f6">
-            {data.map((d, i) => (
-              <Cell
-                key={i}
-                fill={d.y >= 0 ? "#22c55e" : "#ef4444"}
-              />
-            ))}
-          </Scatter>
-        </ScatterChart>
+          <Line
+            yAxisId="sentiment"
+            type="monotone"
+            dataKey="composite"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ fill: "#3b82f6", r: 4 }}
+            activeDot={{ r: 6 }}
+          />
+          <Line
+            yAxisId="return"
+            type="monotone"
+            dataKey="return_pct"
+            stroke="#22c55e"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            dot={{ fill: "#22c55e", r: 3 }}
+            connectNulls={false}
+          />
+        </LineChart>
       </ResponsiveContainer>
+      <div className="flex items-center gap-6 mt-3 text-xs text-muted-foreground justify-center">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-0.5 bg-blue-500 rounded" />
+          <span>Composite Score</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-0.5 rounded" style={{ borderTop: "1.5px dashed #22c55e" }} />
+          <span>Next-Q Return</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function TranscriptTable({ company }: { company: CompanyDetail }) {
-  const [expandedRow, setExpandedRow] = useState<number | null>(null);
-
-  const getScoreColor = (val: number, invert = false) => {
-    const v = invert ? 1 - val : val;
-    if (v >= 0.75) return "text-emerald-400";
-    if (v >= 0.55) return "text-blue-400";
-    if (v >= 0.4) return "text-amber-400";
-    return "text-red-400";
+function DimensionHeatmap({ company }: { company: Company }) {
+  const dims = Object.keys(company.averages) as Array<keyof typeof DIMENSION_LABELS>;
+  
+  const getColor = (val: number) => {
+    if (val >= 0.8) return "bg-emerald-500/40 text-emerald-300";
+    if (val >= 0.65) return "bg-emerald-500/20 text-emerald-400";
+    if (val >= 0.5) return "bg-blue-500/20 text-blue-400";
+    if (val >= 0.35) return "bg-amber-500/20 text-amber-400";
+    return "bg-red-500/20 text-red-400";
   };
 
   return (
     <div className="bg-card border border-card-border rounded-lg overflow-hidden">
       <div className="px-5 py-4 border-b border-card-border">
+        <h3 className="text-sm font-semibold">Dimension Scores by Quarter</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Heatmap of all 10 dimensions across transcripts
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs" data-testid="dimension-heatmap">
+          <thead>
+            <tr className="border-b border-card-border">
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground sticky left-0 bg-card z-10">
+                Quarter
+              </th>
+              {dims.map((dim) => (
+                <th
+                  key={dim}
+                  className="text-center px-2 py-2 font-medium text-muted-foreground whitespace-nowrap"
+                >
+                  {SHORT_LABELS[dim] || dim}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {company.history.map((entry) => {
+              const dateLabel = new Date(entry.date + "T00:00:00").toLocaleDateString(
+                "en-US",
+                { month: "short", year: "2-digit" }
+              );
+              return (
+                <tr key={entry.date} className="border-b border-card-border/50">
+                  <td className="px-3 py-1.5 font-mono text-muted-foreground sticky left-0 bg-card z-10">
+                    {dateLabel}
+                  </td>
+                  {dims.map((dim) => {
+                    const val = entry.scores[dim];
+                    return (
+                      <td key={dim} className="px-1 py-1 text-center">
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded font-mono tabular-nums ${getColor(val)}`}
+                        >
+                          {val.toFixed(2)}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TranscriptTable({ company }: { company: Company }) {
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+
+  return (
+    <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+      <div className="px-5 py-4 border-b border-card-border">
         <h3 className="text-sm font-semibold">Transcript History</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Click a row to see themes, quotes, and risk flags
+        </p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="transcript-table">
           <thead>
             <tr className="border-b border-card-border">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Date</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Quarter</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Sentiment</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Guidance</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Hedging</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Growth</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Margin</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Q&A Def.</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Composite</th>
-              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Next-Q Return</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">
+                Date
+              </th>
+              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">
+                Composite
+              </th>
+              <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">
+                Next-Q Return
+              </th>
+              <th className="text-center px-3 py-3 text-xs font-medium text-muted-foreground">
+                Themes
+              </th>
+              <th className="text-center px-3 py-3 text-xs font-medium text-muted-foreground">
+                Risks
+              </th>
               <th className="px-3 py-3 text-xs font-medium text-muted-foreground w-10"></th>
             </tr>
           </thead>
           <tbody>
             {company.history.map((t, i) => (
-              <>
-                <tr
-                  key={t.date}
-                  className="border-b border-card-border/50 hover:bg-muted/20 transition-colors cursor-pointer"
-                  onClick={() => setExpandedRow(expandedRow === i ? null : i)}
-                  data-testid={`transcript-row-${i}`}
-                >
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {new Date(t.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-                  </td>
-                  <td className="px-4 py-2.5 font-medium">{t.title}</td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.overall_sentiment)}`}>
-                    {t.overall_sentiment.toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.guidance_confidence)}`}>
-                    {t.guidance_confidence.toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.hedging_intensity, true)}`}>
-                    {t.hedging_intensity.toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.growth_language)}`}>
-                    {t.growth_language.toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.margin_confidence)}`}>
-                    {t.margin_confidence.toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${getScoreColor(t.qa_defensiveness, true)}`}>
-                    {t.qa_defensiveness.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums font-medium">
-                    {t.composite_score.toFixed(3)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${
-                    t.next_q_return !== undefined && t.next_q_return !== null
-                      ? t.next_q_return >= 0
-                        ? "text-emerald-400"
-                        : "text-red-400"
-                      : "text-muted-foreground"
-                  }`}>
-                    {t.next_q_return !== undefined && t.next_q_return !== null
-                      ? `${t.next_q_return > 0 ? "+" : ""}${t.next_q_return.toFixed(1)}%`
-                      : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {expandedRow === i ? (
-                      <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                    )}
-                  </td>
-                </tr>
-                {expandedRow === i && (
-                  <tr key={`summary-${t.date}`} className="border-b border-card-border/50">
-                    <td colSpan={11} className="px-5 py-4 bg-muted/10">
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {t.summary}
-                      </p>
-                      <p className="text-xs text-muted-foreground/60 mt-2">
-                        {t.word_count.toLocaleString()} words analyzed
-                      </p>
-                    </td>
-                  </tr>
-                )}
-              </>
+              <TranscriptRow
+                key={t.date}
+                entry={t}
+                index={i}
+                isExpanded={expandedRow === i}
+                onToggle={() => setExpandedRow(expandedRow === i ? null : i)}
+              />
             ))}
           </tbody>
         </table>
@@ -336,18 +314,164 @@ function TranscriptTable({ company }: { company: CompanyDetail }) {
   );
 }
 
+function TranscriptRow({
+  entry,
+  index,
+  isExpanded,
+  onToggle,
+}: {
+  entry: TranscriptEntry;
+  index: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const dateLabel = new Date(entry.date + "T00:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "2-digit",
+  });
+
+  const ret = entry.next_quarter_return;
+  const retDisplay =
+    ret !== null && ret !== undefined
+      ? `${ret > 0 ? "+" : ""}${ret.toFixed(1)}%`
+      : "—";
+  const retColor =
+    ret !== null && ret !== undefined
+      ? ret >= 0
+        ? "text-emerald-400"
+        : "text-red-400"
+      : "text-muted-foreground";
+
+  return (
+    <>
+      <tr
+        className="border-b border-card-border/50 hover:bg-muted/20 transition-colors cursor-pointer"
+        onClick={onToggle}
+        data-testid={`transcript-row-${index}`}
+      >
+        <td className="px-4 py-2.5 tabular-nums text-muted-foreground font-mono">
+          {dateLabel}
+        </td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums font-medium">
+          {entry.composite.toFixed(3)}
+        </td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${retColor}`}>
+          {retDisplay}
+        </td>
+        <td className="px-3 py-2.5 text-center tabular-nums text-muted-foreground">
+          {entry.key_themes.length}
+        </td>
+        <td className="px-3 py-2.5 text-center tabular-nums">
+          {entry.risk_flags.length > 0 ? (
+            <span className="text-amber-400">{entry.risk_flags.length}</span>
+          ) : (
+            <span className="text-muted-foreground">0</span>
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-center">
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          )}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr className="border-b border-card-border/50">
+          <td colSpan={6} className="px-5 py-4 bg-muted/10">
+            <div className="space-y-3">
+              {/* Key Themes */}
+              {entry.key_themes.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-blue-400" />
+                    <span className="text-xs font-medium text-foreground">
+                      Key Themes
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entry.key_themes.map((theme, j) => (
+                      <span
+                        key={j}
+                        className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                      >
+                        {theme}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notable Quotes */}
+              {entry.notable_quotes.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <MessageSquareQuote className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-xs font-medium text-foreground">
+                      Notable Quotes
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {entry.notable_quotes.map((quote, j) => (
+                      <p
+                        key={j}
+                        className="text-xs text-muted-foreground leading-relaxed pl-3 border-l-2 border-emerald-500/30"
+                      >
+                        "{quote}"
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Risk Flags */}
+              {entry.risk_flags.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-medium text-foreground">
+                      Risk Flags
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entry.risk_flags.map((flag, j) => (
+                      <span
+                        key={j}
+                        className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      >
+                        {flag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function CompanyDetailPage() {
   const [, params] = useRoute("/company/:ticker");
-  const ticker = params?.ticker?.toUpperCase() || "AAPL";
+  const ticker = params?.ticker?.toUpperCase() || "";
 
-  const { data: company, isLoading } = useQuery<CompanyDetail>({
+  const { data: company, isLoading } = useQuery<Company>({
     queryKey: ["/api/company", ticker],
     queryFn: async () => {
-      const { apiRequest } = await import("@/lib/queryClient");
       const res = await apiRequest("GET", `/api/company/${ticker}`);
       return res.json();
     },
+    enabled: !!ticker,
   });
+
+  interface CompanyListItem {
+    ticker: string;
+    name: string;
+    subsector: string;
+  }
 
   const { data: companies } = useQuery<CompanyListItem[]>({
     queryKey: ["/api/companies"],
@@ -357,7 +481,10 @@ export default function CompanyDetailPage() {
     return (
       <div className="p-6 space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-40 bg-card border border-card-border rounded-lg animate-pulse" />
+          <div
+            key={i}
+            className="h-40 bg-card border border-card-border rounded-lg animate-pulse"
+          />
         ))}
       </div>
     );
@@ -366,7 +493,13 @@ export default function CompanyDetailPage() {
   if (!company) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Company not found.</p>
+        <Link href="/">
+          <span className="text-xs text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1 mb-4">
+            <ArrowLeft className="w-3 h-3" />
+            Back to Overview
+          </span>
+        </Link>
+        <p className="text-muted-foreground">Company not found: {ticker}</p>
       </div>
     );
   }
@@ -390,7 +523,7 @@ export default function CompanyDetailPage() {
           </div>
           <div className="flex items-center gap-3 mt-1">
             <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-              {company.sector}
+              {company.subsector}
             </span>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Calendar className="w-3 h-3" />
@@ -398,7 +531,6 @@ export default function CompanyDetailPage() {
             </span>
           </div>
         </div>
-        {/* Company quick-nav dropdown */}
         {companies && (
           <select
             className="bg-card border border-card-border rounded-md px-3 py-1.5 text-sm"
@@ -420,39 +552,46 @@ export default function CompanyDetailPage() {
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border border-card-border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Composite Score</p>
+          <p className="text-xs text-muted-foreground">Avg Composite</p>
           <p className="text-lg font-semibold tabular-nums font-mono mt-0.5">
-            {company.averages.composite_score.toFixed(3)}
+            {company.avg_composite.toFixed(3)}
           </p>
         </div>
         <div className="bg-card border border-card-border rounded-lg p-3">
           <p className="text-xs text-muted-foreground">Trend</p>
-          <p className={`text-lg font-semibold tabular-nums font-mono mt-0.5 ${
-            company.trend > 0 ? "text-emerald-400" : company.trend < 0 ? "text-red-400" : ""
-          }`}>
-            {company.trend > 0 ? "+" : ""}{company.trend.toFixed(3)}
-          </p>
-        </div>
-        <div className="bg-card border border-card-border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Volatility</p>
-          <p className="text-lg font-semibold tabular-nums font-mono mt-0.5">
-            {company.volatility.toFixed(3)}
+          <p
+            className={`text-lg font-semibold tabular-nums font-mono mt-0.5 ${
+              company.trend > 0
+                ? "text-emerald-400"
+                : company.trend < 0
+                ? "text-red-400"
+                : ""
+            }`}
+          >
+            {company.trend > 0 ? "+" : ""}
+            {company.trend.toFixed(3)}
           </p>
         </div>
         <div className="bg-card border border-card-border rounded-lg p-3">
           <p className="text-xs text-muted-foreground">Transcripts</p>
           <p className="text-lg font-semibold tabular-nums font-mono mt-0.5">
-            {company.history.length}
+            {company.n_transcripts}
+          </p>
+        </div>
+        <div className="bg-card border border-card-border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">With Returns</p>
+          <p className="text-lg font-semibold tabular-nums font-mono mt-0.5">
+            {company.n_with_returns}
           </p>
         </div>
       </div>
 
       {/* Charts */}
-      <SentimentPriceChart company={company} />
+      <SentimentTimeline company={company} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <DimensionRadar company={company} />
-        <CompanyScatter company={company} />
+        <DimensionHeatmap company={company} />
       </div>
 
       {/* Transcript Table */}
